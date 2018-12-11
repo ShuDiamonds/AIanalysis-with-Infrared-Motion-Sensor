@@ -16,48 +16,21 @@
 
 import wiringpi
 import time
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import numpy as np
+import pandas as pd
 
+from PCF8591 import PCF8591
 
-class PCF8591:
-    def __init__(self, addr):
-        wiringpi.wiringPiSetup() #setup wiringpi
+def sensordatawrite(path,sensordate):
+    now=date.today()
+    tmp=[now.year, now.month, now.day, now.hour,sensordata]
+    with open(path, mode='a') as f:
+        f.write(",".join(map(str,tmp)))
+    return
 
-        self.i2c = wiringpi.I2C() #get I2C
-        self.dev = self.i2c.setup(addr) #setup I2C device
-
-    def LED_ON(self):
-        self.i2c.writeReg8(self.dev, 0x40, 0xFF)
-        
-    def LED_OFF(self):
-        self.i2c.writeReg8(self.dev, 0x40, 0x00)
-        
-    def DAoutput(self,value):
-        self.i2c.writeReg8(self.dev, 0x40, value)
-        
-    def analogRead0(self):
-        self.i2c.writeReg8(self.dev, 0x48,0x40)
-        self.i2c.readReg8(self.dev,0x48)    #read dummy
-        return self.i2c.readReg8(self.dev,0x48)
-        
-    def analogRead1(self):
-        self.i2c.writeReg8(self.dev, 0x48,0x41)
-        self.i2c.readReg8(self.dev,0x48)    #read dummy
-        return self.i2c.readReg8(self.dev,0x48)
-        
-    def analogRead2(self):
-        self.i2c.writeReg8(self.dev, 0x48,0x42)
-        self.i2c.readReg8(self.dev,0x48)    #read dummy
-        return self.i2c.readReg8(self.dev,0x48)
-    def analogRead3(self):
-        self.i2c.writeReg8(self.dev, 0x48,0x43)
-        self.i2c.readReg8(self.dev,0x48)    #read dummy
-        return self.i2c.readReg8(self.dev,0x48)
-    def analogRead(self,pin):
-        self.i2c.writeReg8(self.dev, 0x48,0x40+pin)
-        self.i2c.readReg8(self.dev,0x48)    #read dummy
-        return self.i2c.readReg8(self.dev,0x48)
+Sensor1_outputpath="Sensor1_ourput.csv"
+Sensor2_outputpath="Sensor2_ourput.csv"
 
 if __name__ == "__main__":
     
@@ -65,23 +38,48 @@ if __name__ == "__main__":
     MotionSensor_pin = 1 #wiringpi number see :https://projects.drogon.net/raspberry-pi/wiringpi/pins/
     wiringpi.pinMode( MotionSensor_pin,0)# set as input pin
     
-    StartTime=datetime.now()
-    soundlist=[]
+    csv_colmnsname=["year","month","hour","sensor_value"]
+    #Init outputfile
+    with open(Sensor1_outputpath, mode='a') as f:
+                f.write(",".join(csv_colmnsname))
+    with open(Sensor2_outputpath, mode='a') as f:
+                f.write(",".join(csv_colmnsname))
+    
+    
     while True:
-        """
-        if (datetime.now()-StartTime).total_seconds()>10:
+        currentday=date.today().strftime("%Y_%m_%d")
+        while True: #1day loop
+            ##check the day is passed?
+            if currentday != date.today().strftime("%Y_%m_%d"):
                 break
-        """
-        value=pcf8591.analogRead0()
-        soundlist.append(value)
-        pcf8591.DAoutput(value)
-        #print(value)
-        if len(soundlist)>40:
-            print(np.mean(soundlist))
-            soundlist=[]
-        #print(wiringpi.digitalRead(MotionSensor_pin))
-        #time.sleep(0.1)
-    print(len(soundlist))
+            
+            sensordata1=[]
+            sensordata2=[]
+            StartTimeH=datetime.now()
+            while True: #1hour loop
+                #check pass 1hour or not 
+                if (datetime.now()-StartTimeH).total_seconds()>3600:
+                    break
+                # read infrared sensor value
+                sensordata1.append(wiringpi.digitalRead(MotionSensor_pin))
+            
+                #PCF8591 processing AD conversion
+                value=pcf8591.analogRead0()
+                sensordata2.append(value)
+                pcf8591.DAoutput(value)
+                #print(value)
+                time.sleep(1)
+                
+            #### END 1hour loop ####
+            sensordata1Series=pd.Series(sensordata1)
+            sensordata2Series=pd.Series(sensordata2)
+            
+            sensordatawrite(Sensor1_outputpath,sensordata1Series.mean())
+            sensordatawrite(Sensor2_outputpath,sensordata2Series.mean())
+            
+                
+        #### END 1day loop ####
+        
 
     
 
