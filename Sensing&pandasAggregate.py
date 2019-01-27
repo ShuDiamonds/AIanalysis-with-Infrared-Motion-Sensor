@@ -8,6 +8,10 @@
 # VCC ------------- 3.3V
 # GND ------------- GND
 #
+# GPIO 1 (18)------ IR sensor1
+# GPIO 4 (23)------ IR sensor2
+# GPIO 5 (24)------ IR sensor3
+
 ######
 
 # Description
@@ -29,13 +33,12 @@ scope = ['https://spreadsheets.google.com/feeds',
 
 
 def sensordatawrite(path,sensordata,worksheet):
-    now=datetime.now()
-    tmp=[now.year, now.month, now.day, now.hour,sensordata]
+    tmp=[datetime.now().strftime("%Y_%m_%d %H:%M:%S"),round(sensordata,3)]
     
     try:
         #write csv
         with open(path, mode='a') as f:
-            f.write(",".join(map(str,tmp)))
+            f.write(",".join(map(str,tmp))+"\n")
         
         #write spread sheet
             worksheet.append_row(tmp)
@@ -44,31 +47,42 @@ def sensordatawrite(path,sensordata,worksheet):
         
     return
 
-Sensor1_outputpath="Sensor1_ourput.csv"
-Sensor2_outputpath="Sensor2_ourput.csv"
+Sensor_outputpaths=[
+    "IRSensor1_ourput.csv",
+    "IRSensor2_ourput.csv",
+    "IRSensor3_ourput.csv",
+    "Sensor4_ourput.csv"]
+
 
 if __name__ == "__main__":
     
     #init pct8591
     pcf8591 = PCF8591(0x48)
-    MotionSensor_pin = 1 #wiringpi number see :https://projects.drogon.net/raspberry-pi/wiringpi/pins/
-    wiringpi.pinMode( MotionSensor_pin,0)# set as input pin
-    
+    MotionSensor1_pin = 1 #wiringpi number see :https://projects.drogon.net/raspberry-pi/wiringpi/pins/
+    MotionSensor2_pin = 4
+    MotionSensor3_pin = 5
+    wiringpi.pinMode( MotionSensor1_pin,0)# set as input pin
+    wiringpi.pinMode( MotionSensor2_pin,0)
+    wiringpi.pinMode( MotionSensor3_pin,0)
     
     #init google spreadsheet
     credentials = ServiceAccountCredentials.from_json_keyfile_name('spreadsheet.json', scope)
     gc = gspread.authorize(credentials)
     workbook1 = gc.open('Sensor1_output')
     workbook2 = gc.open('Sensor2_output')
-    worksheet1 = workbook1.sheet1
-    worksheet2 = workbook2.sheet1
+    worksheets=[]
+    worksheets.append(workbook1.worksheet("IRsensor1"))
+    worksheets.append(workbook1.worksheet("IRsensor2"))
+    worksheets.append(workbook1.worksheet("IRsensor3"))
+    worksheets.append(workbook2.sheet1)
     
-    csv_colmnsname=["year","month","hour","sensor_value"]
+    csv_colmnsname=["time","sensor_value"]
+    
     #Init outputfile
-    with open(Sensor1_outputpath, mode='a') as f:
-                f.write(",".join(csv_colmnsname))
-    with open(Sensor2_outputpath, mode='a') as f:
-                f.write(",".join(csv_colmnsname))
+    #for Sensor_outputpath in Sensor_outputpaths:
+    #    with open(Sensor_outputpath, mode='a') as f:
+    #        f.write(",".join(csv_colmnsname)+"\n")
+    
     
     
     while True:
@@ -80,32 +94,43 @@ if __name__ == "__main__":
             
             sensordata1=[]
             sensordata2=[]
+            sensordata3=[]
+            sensordata4=[]
             StartTimeH=datetime.now()
             while True: #1hour loop
                 #check pass 5min or not 
                 if (datetime.now()-StartTimeH).total_seconds()>30:
                     break
+                
                 # read infrared sensor value
-                sensordata1.append(wiringpi.digitalRead(MotionSensor_pin))
-                print("1:"+str(wiringpi.digitalRead(MotionSensor_pin)))
+                sensordata1.append(wiringpi.digitalRead(MotionSensor1_pin))
+                sensordata2.append(wiringpi.digitalRead(MotionSensor2_pin))
+                sensordata3.append(wiringpi.digitalRead(MotionSensor3_pin))
             
                 #PCF8591 processing AD conversion
                 value=pcf8591.analogRead0()
-                sensordata2.append(value)
+                sensordata4.append(value)
                 pcf8591.DAoutput(value)
-                print("2:"+str(value))
+                
+                print("IR1:{0} IR2:{1} IR3:{2} AD:{3}".format(sensordata1[-1],sensordata2[-1],sensordata3[-1],sensordata4[-1]))
                 time.sleep(1)
                 
             #### END 1hour loop ####
-            sensordata1Series=pd.Series(sensordata1)
-            sensordata2Series=pd.Series(sensordata2)
+            sensordataSeries=[]
+            sensordataSeries.append(pd.Series(sensordata1))
+            sensordataSeries.append(pd.Series(sensordata2))
+            sensordataSeries.append(pd.Series(sensordata3))
+            sensordataSeries.append(pd.Series(sensordata4))
             
-            sensordatawrite(Sensor1_outputpath,sensordata1Series.mean(),worksheet1)
-            sensordatawrite(Sensor2_outputpath,sensordata2Series.mean())
+            print("write data")
+            for its_outputpath,its_worksheet,its_data in zip(Sensor_outputpaths,worksheets,sensordataSeries):
+                sensordatawrite(its_outputpath,its_data.mean(),its_worksheet)
+            
             
                 
         #### END 1day loop ####
         
 
     
+
 
